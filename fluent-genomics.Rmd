@@ -1,0 +1,53 @@
+---
+title: "Fluent genomic data analyses with plyranges and tximeta"
+author: "Michael Love, Michael Lawrence, Stuart Lee"
+---
+
+# RNA-seq data import
+
+```{r}
+library(macrophage)
+dir <- system.file("extdata", package="macrophage")
+coldata <- read.csv(file.path(dir, "coldata.csv"))
+coldata <- coldata[,c(1,2,3,5)]
+names(coldata) <- c("names","id","line","condition")
+coldata$files <- file.path(dir, "quants", coldata$names, "quant.sf.gz")
+coldata$condition <- relevel(coldata$condition, "naive")
+```
+
+```{r}
+suppressPackageStartupMessages(library(SummarizedExperiment))
+library(tximeta)
+```
+
+```{r}
+se <- tximeta(coldata, dropInfReps=TRUE)
+assayNames(se)
+gse <- summarizeToGene(se)
+```
+
+# Basic DE task
+
+```{r}
+library(DESeq2)
+dds <- DESeqDataSet(gse, ~condition)
+keep <- rowSums(counts(dds) >= 10) >= 6
+dds <- dds[keep,]
+```
+
+```{r}
+dds <- DESeq(dds)
+res <- results(dds, contrast=c("condition","IFNg","naive"), lfcThreshold=1)
+summary(res)
+```
+
+```{r}
+plotMA(res, ylim=c(-10,10))
+plotCounts(dds, which.min(res$pvalue), "condition")
+```
+
+# ATAC peaks
+
+<https://zenodo.org/record/259661#.XIAfJFNKjOQ>
+
+

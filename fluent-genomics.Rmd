@@ -40,12 +40,11 @@ dds <- DESeq(dds)
 res <- results(dds, contrast=c("condition","IFNg","naive"),
                lfcThreshold=1)
 summary(res, alpha=.01)
-```
-
-```{r}
 plotMA(res, ylim=c(-10,10))
 plotCounts(dds, which.min(res$pvalue), "condition")
 ```
+
+Output *GRanges* results:
 
 ```{r}
 de_genes <- results(dds, contrast=c("condition","IFNg","naive"),
@@ -71,12 +70,8 @@ atac_coldata$condition <- relevel(atac_coldata$condition, "naive")
 ```
 
 ```{r}
-library(rtracklayer)
-peaks_df <- read.delim("ATAC_peak_metadata.txt.gz")
-```
-
-```{r}
 library(GenomicRanges)
+peaks_df <- read.delim("ATAC_peak_metadata.txt.gz")
 # add the genome info
 peaks_gr <- with(peaks_df, GRanges(chr, IRanges(start,end), gene_id=gene_id))
 ```
@@ -109,6 +104,12 @@ tt <- topTable(fit, coef=45, sort.by="none", n=nrow(atac))
 ```
 
 ```{r}
+idx <- which.max(tt$logFC)
+plot(assay(atac)[idx,] ~ atac$condition)
+table(tt$logFC > 2 & tt$adj.P.Val < .01)
+```
+
+```{r}
 peaks <- rowRanges(atac)
 peaks$logFC <- tt$logFC
 peaks$pvalue <- tt$P.Value
@@ -116,23 +117,28 @@ peaks$padj <- tt$adj.P.Val
 seqlevelsStyle(peaks) <- "UCSC"
 ```
 
+# plyranges
+
 ```{r}
-table(peaks$logFC > 2 & peaks$padj < .01)
+suppressPackageStartupMessages(library(plyranges))
 ```
 
 ```{r}
-idx <- which.max(peaks$logFC)
-plot(assay(atac)[idx,] ~ atac$condition)
+da_peaks <- peaks %>% filter(logFC > 2 & padj < .01)
+other_peaks <- peaks %>% filter(padj > .1)
+# sub-sample:
+other_peaks <- other_peaks[sample(length(other_peaks),length(da_peaks))]
 ```
 
 ```{r}
-da_peaks <- peaks[peaks$logFC > 2 & peaks$padj < .01]
-other_peaks <- peaks[sample(which(peaks$padj > .1), length(da_peaks))]
+all_peaks <- c(da_peaks, other_peaks)
+all_peaks$group <- rep(c("da","not-da"), each=length(da_peaks))
 ```
 
 ```{r}
-d1 <- distanceToNearest(da_peaks, de_genes)
-d2 <- distanceToNearest(other_peaks, de_genes)
-table(mcols(d1)$distance < 100000)
-table(mcols(d2)$distance < 100000)
+all_peaks$distance <- mcols(distanceToNearest(all_peaks, de_genes))$distance
+```
+
+```{r}
+all_peaks %>% group_by(group) %>% summarize(close=sum(distance < 10e3))
 ```

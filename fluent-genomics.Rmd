@@ -30,15 +30,16 @@ gse <- summarizeToGene(se)
 
 ```{r}
 library(DESeq2)
-dds <- DESeqDataSet(gse, ~condition)
+dds <- DESeqDataSet(gse, ~line + condition)
 keep <- rowSums(counts(dds) >= 10) >= 6
 dds <- dds[keep,]
 ```
 
 ```{r}
 dds <- DESeq(dds)
-res <- results(dds, contrast=c("condition","IFNg","naive"), lfcThreshold=1)
-summary(res)
+res <- results(dds, contrast=c("condition","IFNg","naive"),
+               lfcThreshold=1)
+summary(res, alpha=.01)
 ```
 
 ```{r}
@@ -46,8 +47,92 @@ plotMA(res, ylim=c(-10,10))
 plotCounts(dds, which.min(res$pvalue), "condition")
 ```
 
-# ATAC peaks
+```{r}
+de_genes <- results(dds, contrast=c("condition","IFNg","naive"),
+                    lfcThreshold=1, format="GRanges")
+de_genes <- de_genes[de_genes$padj < .05]
+```
 
-<https://zenodo.org/record/259661#.XIAfJFNKjOQ>
+# ATAC peak data
 
+<https://zenodo.org/record/1188300#.XIAhXlNKjOQ>
 
+This takes ~30 seconds and loads an object of ~370 Mb.
+
+```{r}
+atac_mat <- as.matrix(read.delim("ATAC_cqn_matrix.txt.gz"))
+```
+
+```{r}
+atac_coldata <- read.delim("ATAC_sample_metadata.txt.gz")
+atac_coldata <- atac_coldata[,1:6]
+colnames(atac_coldata)[4] <- "condition"
+atac_coldata$condition <- relevel(atac_coldata$condition, "naive")
+```
+
+```{r}
+library(rtracklayer)
+peaks_df <- read.delim("ATAC_peak_metadata.txt.gz")
+```
+
+```{r}
+library(GenomicRanges)
+# add the genome info
+peaks_gr <- with(peaks_df, GRanges(chr, IRanges(start,end), gene_id=gene_id))
+```
+
+```{r}
+idx <- match(colnames(atac_mat), atac_coldata$sample_id)
+atac_coldata <- atac_coldata[idx,]
+all.equal(colnames(atac_mat), as.character(atac_coldata$sample_id))
+```
+
+```{r}
+atac <- SummarizedExperiment(list(cqndata=atac_mat),
+                             rowRanges=peaks_gr,
+                             colData=atac_coldata)
+```
+
+```{r}
+rmu <- rowMeans(assay(atac))
+rvar <- rowVars(assay(atac))
+idx <- sample(nrow(atac),1e4)
+plot(rmu[idx], rvar[idx], cex=.1)
+```
+
+```{r}
+library(limma)
+design <- model.matrix(~donor + condition, colData(atac))
+fit <- lmFit(assay(atac), design)
+fit <- eBayes(fit)
+tt <- topTable(fit, coef=45, sort.by="none", n=nrow(atac))
+```
+
+```{r}
+peaks <- rowRanges(atac)
+peaks$logFC <- tt$logFC
+peaks$pvalue <- tt$P.Value
+peaks$padj <- tt$adj.P.Val
+seqlevelsStyle(peaks) <- "UCSC"
+```
+
+```{r}
+table(peaks$logFC > 2 & peaks$padj < .01)
+```
+
+```{r}
+idx <- which.max(peaks$logFC)
+plot(assay(atac)[idx,] ~ atac$condition)
+```
+
+```{r}
+da_peaks <- peaks[peaks$logFC > 2 & peaks$padj < .01]
+other_peaks <- peaks[sample(which(peaks$padj > .1), length(da_peaks))]
+```
+
+```{r}
+d1 <- distanceToNearest(da_peaks, de_genes)
+d2 <- distanceToNearest(other_peaks, de_genes)
+table(mcols(d1)$distance < 100000)
+table(mcols(d2)$distance < 100000)
+```

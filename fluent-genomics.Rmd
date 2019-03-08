@@ -7,7 +7,6 @@ author: "Michael Love, Michael Lawrence, Stuart Lee"
 
 ```{r}
 suppressPackageStartupMessages(library(plyranges))
-library(readr)
 library(macrophage)
 dir <- system.file("extdata", package="macrophage")
 coldata <- file.path(dir, "coldata.csv") %>% 
@@ -156,7 +155,7 @@ other_peaks <- other_peaks[sample(length(other_peaks),length(da_peaks))]
 # this could be done with bind_ranges
 all_peaks <- c(da_peaks, other_peaks)
 all_peaks$group <- rep(c("da","not-da"), each=length(da_peaks))
-```
+``` 
 
 ```{r}
 # this could be reworked with joins i think

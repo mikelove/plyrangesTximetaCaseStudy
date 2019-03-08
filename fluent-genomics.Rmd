@@ -6,13 +6,23 @@ author: "Michael Love, Michael Lawrence, Stuart Lee"
 # RNA-seq data import
 
 ```{r}
+suppressPackageStartupMessages(library(plyranges))
+library(readr)
 library(macrophage)
 dir <- system.file("extdata", package="macrophage")
-coldata <- read.csv(file.path(dir, "coldata.csv"))
-coldata <- coldata[,c(1,2,3,5)]
-names(coldata) <- c("names","id","line","condition")
-coldata$files <- file.path(dir, "quants", coldata$names, "quant.sf.gz")
-coldata$condition <- relevel(coldata$condition, "naive")
+coldata <- file.path(dir, "coldata.csv") %>% 
+  read.csv() %>% 
+  select(
+    names, 
+    id = sample_id, 
+    line = line_id, 
+    condition = condition_name
+  ) %>%
+  mutate(
+    files = file.path(dir, "quants", names, "quant.sf.gz"),
+    condition = relevel(condition, "naive")
+  )
+head(coldata)
 ```
 
 ```{r}
@@ -47,8 +57,11 @@ plotCounts(dds, which.min(res$pvalue), "condition")
 Output *GRanges* results:
 
 ```{r}
-de_genes <- results(dds, contrast=c("condition","IFNg","naive"),
-                    lfcThreshold=1, format="GRanges")
+de_genes <- results(dds, 
+                    contrast=c("condition","IFNg","naive"),
+                    lfcThreshold=1, 
+                    format="GRanges") %>% 
+  filter(padj < 0.05)
 de_genes <- de_genes[de_genes$padj < .05]
 ```
 
@@ -63,17 +76,23 @@ atac_mat <- as.matrix(read.delim("ATAC_cqn_matrix.txt.gz"))
 ```
 
 ```{r}
-atac_coldata <- read.delim("ATAC_sample_metadata.txt.gz")
-atac_coldata <- atac_coldata[,1:6]
-colnames(atac_coldata)[4] <- "condition"
-atac_coldata$condition <- relevel(atac_coldata$condition, "naive")
+atac_coldata <- read.delim("ATAC_sample_metadata.txt.gz") %>% 
+  # AnnotationDbi overrides select
+  plyranges::select(
+    sample_id,
+    donor,
+    condition = condition_name
+  ) %>% 
+  mutate(condition = relevel(condition, "naive"))
 ```
 
 ```{r}
 library(GenomicRanges)
 peaks_df <- read.delim("ATAC_peak_metadata.txt.gz")
 # add the genome info
-peaks_gr <- with(peaks_df, GRanges(chr, IRanges(start,end), gene_id=gene_id))
+peaks_gr <- peaks_df %>% 
+  plyranges::select(seqnames = chr, start, end, gene_id) %>% 
+  as_granges()
 ```
 
 ```{r}
@@ -110,10 +129,12 @@ table(tt$logFC > 2 & tt$adj.P.Val < .01)
 ```
 
 ```{r}
-peaks <- rowRanges(atac)
-peaks$logFC <- tt$logFC
-peaks$pvalue <- tt$P.Value
-peaks$padj <- tt$adj.P.Val
+peaks <- rowRanges(atac) %>% 
+  mutate(
+    logFC = tt$logFC,
+    pvalue = tt$P.Value,
+    padj = tt$adj.P.Value
+  )
 seqlevelsStyle(peaks) <- "UCSC"
 ```
 
@@ -127,15 +148,18 @@ suppressPackageStartupMessages(library(plyranges))
 da_peaks <- peaks %>% filter(logFC > 2 & padj < .01)
 other_peaks <- peaks %>% filter(padj > .1)
 # sub-sample:
+# could probably achive this with slice
 other_peaks <- other_peaks[sample(length(other_peaks),length(da_peaks))]
 ```
 
 ```{r}
+# this could be done with bind_ranges
 all_peaks <- c(da_peaks, other_peaks)
 all_peaks$group <- rep(c("da","not-da"), each=length(da_peaks))
 ```
 
 ```{r}
+# this could be reworked with joins i think
 all_peaks$distance <- mcols(distanceToNearest(all_peaks, de_genes))$distance
 ```
 

@@ -49,7 +49,7 @@ dds <- DESeq(dds)
 res <- results(dds, contrast=c("condition","IFNg","naive"),
                lfcThreshold=1)
 summary(res, alpha=.01)
-plotMA(res, ylim=c(-10,10))
+DESeq2::plotMA(res, ylim=c(-10,10))
 plotCounts(dds, which.min(res$pvalue), "condition")
 ```
 
@@ -60,9 +60,16 @@ de_genes <- results(dds,
                     contrast=c("condition","IFNg","naive"),
                     lfcThreshold=1, 
                     format="GRanges") %>% 
-  filter(padj < 0.05)
-de_genes <- de_genes[de_genes$padj < .05]
+  filter(padj < 0.01) %>%
+  mutate(de_log2FC = log2FoldChange,
+         de_padj = padj)
 ```
+
+```{r}
+# how to do this with plyranges?
+mcols(de_genes) <- mcols(de_genes)[c("de_log2FC","de_padj")]
+```
+
 
 # ATAC peak data
 
@@ -118,21 +125,21 @@ library(limma)
 design <- model.matrix(~donor + condition, colData(atac))
 fit <- lmFit(assay(atac), design)
 fit <- eBayes(fit)
-tt <- topTable(fit, coef=45, sort.by="none", n=nrow(atac))
+idx <- which(colnames(fit$coefficients) == "conditionIFNg")
+tt <- topTable(fit, coef=idx, sort.by="none", n=nrow(atac))
 ```
 
 ```{r}
 idx <- which.max(tt$logFC)
 plot(assay(atac)[idx,] ~ atac$condition)
-table(tt$logFC > 2 & tt$adj.P.Val < .01)
+table(tt$logFC > 1 & tt$adj.P.Val < .05)
 ```
 
 ```{r}
 peaks <- rowRanges(atac) %>% 
   mutate(
-    logFC = tt$logFC,
-    pvalue = tt$P.Value,
-    padj = tt$adj.P.Value
+    da_logFC = tt$logFC,
+    da_padj = tt$adj.P.Val
   )
 seqlevelsStyle(peaks) <- "UCSC"
 ```
@@ -144,24 +151,53 @@ suppressPackageStartupMessages(library(plyranges))
 ```
 
 ```{r}
-da_peaks <- peaks %>% filter(logFC > 2 & padj < .01)
-other_peaks <- peaks %>% filter(padj > .1)
-# sub-sample:
-# could probably achive this with slice
-other_peaks <- other_peaks[sample(length(other_peaks),length(da_peaks))]
+da_peaks <- peaks %>% filter(da_logFC > 2 & da_padj < .01)
+other_peaks <- peaks %>% filter(da_padj > .1)
 ```
 
 ```{r}
-# this could be done with bind_ranges
-all_peaks <- c(da_peaks, other_peaks)
-all_peaks$group <- rep(c("da","not-da"), each=length(da_peaks))
+# sub-sample, here define a dplyr function first
+sample_n <- function(x,n) x[sample.int(length(x),n,replace=FALSE)]
+other_peaks <- other_peaks %>%
+  sample_n(length(da_peaks))
+```
+
+```{r}
+all_peaks <- bind_ranges(da=da_peaks,
+                         not_da=other_peaks,
+                         .id="origin") %>%
+  mutate(
+    # clean up the origin column
+    origin = sub("da.*", "da", origin)
+  )
 ``` 
 
 ```{r}
-# this could be reworked with joins i think
-all_peaks$distance <- mcols(distanceToNearest(all_peaks, de_genes))$distance
+overlap_peaks <- all_peaks %>%
+  mutate(width=1e4) %>%
+  join_overlap_left(de_genes)
 ```
 
 ```{r}
-all_peaks %>% group_by(group) %>% summarize(close=sum(distance < 10e3))
+overlap_peaks %>%
+  group_by(origin) %>%
+  summarize(close=sum(!is.na(de_padj)))
+```
+
+At this point, one can adjust the DE thresholds, but it would be more
+complicated to adjust the peak thresholds, because of how the
+subsampling was done to balance the two groups. So we could drop the
+subsampling and instead look at the proportion of overlap, which would
+allow one to adjust both DE and DA thresholds and compare overlap.
+
+```{r}
+overlap_peaks %>%
+  group_by(origin) %>%
+  summarize(close=sum(!is.na(de_padj) & abs(de_log2FC) > 2))
+```
+
+```{r}
+overlap_peaks %>%
+  group_by(origin) %>%
+  summarize(close=sum(!is.na(de_padj) & abs(de_log2FC) > 3))
 ```

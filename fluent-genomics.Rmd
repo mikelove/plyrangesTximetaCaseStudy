@@ -32,6 +32,9 @@ library(tximeta)
 ```{r}
 se <- tximeta(coldata, dropInfReps=TRUE)
 assayNames(se)
+```
+
+```{r}
 gse <- summarizeToGene(se)
 ```
 
@@ -48,28 +51,37 @@ dds <- dds[keep,]
 dds <- DESeq(dds)
 res <- results(dds, contrast=c("condition","IFNg","naive"),
                lfcThreshold=1)
+```
+
+```{r}
 summary(res, alpha=.01)
 DESeq2::plotMA(res, ylim=c(-10,10))
 plotCounts(dds, which.min(res$pvalue), "condition")
 ```
 
-Output *GRanges* results:
+Output *GRanges* results (DE and non-DE)
 
 ```{r}
 de_genes <- results(dds, 
                     contrast=c("condition","IFNg","naive"),
                     lfcThreshold=1, 
-                    format="GRanges") %>% 
+                    format="GRanges") %>%
   filter(padj < 0.01) %>%
-  mutate(de_log2FC = log2FoldChange,
-         de_padj = padj)
+  plyranges::select(de_log2FC = log2FoldChange,
+                    de_padj = padj)
 ```
+
+Have to re-run `results` because we don't want to use an `lfcThreshold`
+this time:
 
 ```{r}
-# how to do this with plyranges?
-mcols(de_genes) <- mcols(de_genes)[c("de_log2FC","de_padj")]
+other_genes <- results(dds, 
+                       contrast=c("condition","IFNg","naive"),
+                       format="GRanges") %>% 
+  filter(pvalue > 0.1) %>%
+  plyranges::select(de_log2FC = log2FoldChange,
+                    de_padj = padj)
 ```
-
 
 # ATAC peak data
 
@@ -93,12 +105,13 @@ atac_coldata <- read.delim("ATAC_sample_metadata.txt.gz") %>%
 ```
 
 ```{r}
-library(GenomicRanges)
 peaks_df <- read.delim("ATAC_peak_metadata.txt.gz")
-# add the genome info
 peaks_gr <- peaks_df %>% 
   plyranges::select(seqnames = chr, start, end, gene_id) %>% 
   as_granges()
+# we know this from the Zenodo entry
+# https://zenodo.org/record/1188300#.XJOFSlNKiL5
+genome(peaks_gr) <- "GRCh38"
 ```
 
 ```{r}
@@ -138,66 +151,57 @@ table(tt$logFC > 1 & tt$adj.P.Val < .05)
 ```{r}
 peaks <- rowRanges(atac) %>% 
   mutate(
-    da_logFC = tt$logFC,
+    da_log2FC = tt$logFC,
     da_padj = tt$adj.P.Val
   )
 seqlevelsStyle(peaks) <- "UCSC"
-```
-
-# plyranges
-
-```{r}
-suppressPackageStartupMessages(library(plyranges))
+genome(peaks) <- "hg38"
 ```
 
 ```{r}
-da_peaks <- peaks %>% filter(da_logFC > 2 & da_padj < .01)
-other_peaks <- peaks %>% filter(da_padj > .1)
+da_peaks <- peaks %>% filter(da_padj < .01)
 ```
+
+# Overlap analysis
 
 ```{r}
 # sub-sample, here define a dplyr function first
 sample_n <- function(x,n) x[sample.int(length(x),n,replace=FALSE)]
-other_peaks <- other_peaks %>%
-  sample_n(length(da_peaks))
 ```
 
 ```{r}
-all_peaks <- bind_ranges(da=da_peaks,
-                         not_da=other_peaks,
+other_genes <- other_genes %>%
+  sample_n(length(de_genes))
+```
+
+```{r}
+all_genes <- bind_ranges(de=de_genes,
+                         not_de=other_genes,
                          .id="origin") %>%
   mutate(
-    # clean up the origin column
-    origin = sub("da.*", "da", origin)
+    origin = sub("de.*", "de", origin)
   )
 ``` 
 
 ```{r}
-overlap_peaks <- all_peaks %>%
+overlap_genes <- all_genes %>%
   mutate(width=1e4) %>%
-  join_overlap_left(de_genes)
+  join_overlap_left(da_peaks)
+```
+
+How many DA peaks are near DE genes (where a gene may appear more than
+once, because we are doing a join):
+
+```{r}
+overlap_tab <- overlap_genes %>%
+  group_by(origin) %>%
+  summarize(any=sum(!is.na(da_padj)),
+            lfc1=sum(abs(da_log2FC) > 1, na.rm=TRUE),
+            lfc2=sum(abs(da_log2FC) > 2, na.rm=TRUE),
+            lfc3=sum(abs(da_log2FC) > 3, na.rm=TRUE))
+overlap_tab
 ```
 
 ```{r}
-overlap_peaks %>%
-  group_by(origin) %>%
-  summarize(close=sum(!is.na(de_padj)))
-```
-
-At this point, one can adjust the DE thresholds, but it would be more
-complicated to adjust the peak thresholds, because of how the
-subsampling was done to balance the two groups. So we could drop the
-subsampling and instead look at the proportion of overlap, which would
-allow one to adjust both DE and DA thresholds and compare overlap.
-
-```{r}
-overlap_peaks %>%
-  group_by(origin) %>%
-  summarize(close=sum(!is.na(de_padj) & abs(de_log2FC) > 2))
-```
-
-```{r}
-overlap_peaks %>%
-  group_by(origin) %>%
-  summarize(close=sum(!is.na(de_padj) & abs(de_log2FC) > 3))
+sapply(overlap_tab[,2:5], function(x) x[1]/x[2])
 ```

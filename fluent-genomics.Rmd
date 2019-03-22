@@ -53,13 +53,16 @@ res <- results(dds, contrast=c("condition","IFNg","naive"),
                lfcThreshold=1)
 ```
 
+Always good to do a little visualization of results:
+
 ```{r}
 summary(res, alpha=.01)
 DESeq2::plotMA(res, ylim=c(-10,10))
 plotCounts(dds, which.min(res$pvalue), "condition")
 ```
 
-Output *GRanges* results (DE and non-DE)
+Output *GRanges* results (both DE and some non-DE for comparison
+later): 
 
 ```{r}
 de_genes <- results(dds, 
@@ -67,11 +70,13 @@ de_genes <- results(dds,
                     lfcThreshold=1, 
                     format="GRanges") %>%
   filter(padj < 0.01) %>%
-  plyranges::select(de_log2FC = log2FoldChange,
+  mutate(gene_id=names(.)) %>%
+  plyranges::select(gene_id,
+                    de_log2FC = log2FoldChange,
                     de_padj = padj)
 ```
 
-Have to re-run `results` because we don't want to use an `lfcThreshold`
+We re-run `results` because we don't want to use an `lfcThreshold` 
 this time:
 
 ```{r}
@@ -79,7 +84,9 @@ other_genes <- results(dds,
                        contrast=c("condition","IFNg","naive"),
                        format="GRanges") %>% 
   filter(pvalue > 0.1) %>%
-  plyranges::select(de_log2FC = log2FoldChange,
+  mutate(gene_id=names(.)) %>%
+  plyranges::select(gene_id,
+                    de_log2FC = log2FoldChange,
                     de_padj = padj)
 ```
 
@@ -95,7 +102,6 @@ atac_mat <- as.matrix(read.delim("ATAC_cqn_matrix.txt.gz"))
 
 ```{r}
 atac_coldata <- read.delim("ATAC_sample_metadata.txt.gz") %>% 
-  # AnnotationDbi overrides select
   plyranges::select(
     sample_id,
     donor,
@@ -105,9 +111,9 @@ atac_coldata <- read.delim("ATAC_sample_metadata.txt.gz") %>%
 ```
 
 ```{r}
-peaks_df <- read.delim("ATAC_peak_metadata.txt.gz")
+peaks_df <- read.delim("ATAC_peak_metadata.txt.gz", strings=FALSE)
 peaks_gr <- peaks_df %>% 
-  plyranges::select(seqnames = chr, start, end, gene_id) %>% 
+  plyranges::select(seqnames = chr, start, end, peak_id=gene_id) %>% 
   as_granges()
 # we know this from the Zenodo entry
 # https://zenodo.org/record/1188300#.XJOFSlNKiL5
@@ -126,11 +132,13 @@ atac <- SummarizedExperiment(list(cqndata=atac_mat),
                              colData=atac_coldata)
 ```
 
+Check the SD over mean plot:
+
 ```{r}
 rmu <- rowMeans(assay(atac))
 rvar <- rowVars(assay(atac))
 idx <- sample(nrow(atac),1e4)
-plot(rmu[idx], rvar[idx], cex=.1)
+plot(rmu[idx], sqrt(rvar[idx]), cex=.1)
 ```
 
 ```{r}
@@ -141,6 +149,8 @@ fit <- eBayes(fit)
 idx <- which(colnames(fit$coefficients) == "conditionIFNg")
 tt <- topTable(fit, coef=idx, sort.by="none", n=nrow(atac))
 ```
+
+Plot the top gene by LFC
 
 ```{r}
 idx <- which.max(tt$logFC)
@@ -204,4 +214,13 @@ overlap_tab
 
 ```{r}
 sapply(overlap_tab[,2:5], function(x) x[1]/x[2])
+```
+
+Let's repeat, but this time, we will peak the top peak per gene based
+on the peaks LFC:
+
+```{r eval=FALSE}
+overlap_genes %>%
+  group_by(gene_id) %>%
+  plyranges::slice(max(abs(da_log2FC)))
 ```

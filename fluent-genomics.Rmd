@@ -185,18 +185,21 @@ other_genes <- other_genes %>%
 ```
 
 ```{r}
+lvls <- c("not_de","de")
 all_genes <- bind_ranges(de=de_genes,
                          not_de=other_genes,
                          .id="origin") %>%
   mutate(
-    origin = sub("de.*", "de", origin)
+    origin = factor(sub("de.*", "de", origin), lvls)
   )
+all_genes
 ``` 
 
 ```{r}
 overlap_genes <- all_genes %>%
   mutate(width=1e4) %>%
   join_overlap_left(da_peaks)
+overlap_genes
 ```
 
 How many DA peaks are near DE genes (where a gene may appear more than
@@ -207,20 +210,22 @@ overlap_tab <- overlap_genes %>%
   group_by(origin) %>%
   summarize(any=sum(!is.na(da_padj)),
             lfc1=sum(abs(da_log2FC) > 1, na.rm=TRUE),
-            lfc2=sum(abs(da_log2FC) > 2, na.rm=TRUE),
-            lfc3=sum(abs(da_log2FC) > 3, na.rm=TRUE))
+            lfc2=sum(abs(da_log2FC) > 2, na.rm=TRUE))
 overlap_tab
 ```
 
 ```{r}
-sapply(overlap_tab[,2:5], function(x) x[1]/x[2])
+sapply(overlap_tab[,-1], function(x) x[2]/x[1])
 ```
 
-Let's repeat, but this time, we will peak the top peak per gene based
-on the peaks LFC:
+We can ask for the top peak per gene based on the peak's LFC:
 
-```{r eval=FALSE}
+```{r}
+library(ggplot2)
 overlap_genes %>%
   group_by(gene_id) %>%
-  plyranges::slice(max(abs(da_log2FC)))
+  plyranges::filter(abs(da_log2FC) == max(abs(da_log2FC))) %>%
+  mcols %>% as.data.frame %>%
+  ggplot(aes(origin, abs(da_log2FC))) +
+  geom_boxplot()
 ```

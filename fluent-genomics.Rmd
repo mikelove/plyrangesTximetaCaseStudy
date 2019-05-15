@@ -1,7 +1,12 @@
 ---
-title: "Fluent genomic data analyses with plyranges and tximeta"
-author: "Michael Love, Michael Lawrence, Stuart Lee"
+title: "A *plyranges* and *tximeta* case study"
+subtitle: "Overlapping differential expression and chromatin accessibility"
+author: "Michael Love, Stuart Lee, Michael Lawrence"
 ---
+
+```{r setup, echo=FALSE, results="hide"}
+knitr::opts_chunk$set(cache=TRUE)
+```
 
 # RNA-seq data import
 
@@ -11,7 +16,7 @@ library(macrophage)
 dir <- system.file("extdata", package="macrophage")
 coldata <- file.path(dir, "coldata.csv") %>% 
   read.csv() %>% 
-  select(
+  dplyr::select(
     names, 
     id = sample_id, 
     line = line_id, 

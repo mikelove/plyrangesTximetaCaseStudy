@@ -1,14 +1,92 @@
 ---
 title: "A *plyranges* and *tximeta* case study"
-subtitle: "Overlapping differential expression and chromatin accessibility"
+subtitle: "Overlapping differential expression and differential chromatin accessibility"
 author: "Michael Love, Stuart Lee, Michael Lawrence"
+date: "June 2019"
+bibliography: library.bib
 ---
 
 ```{r setup, echo=FALSE, results="hide"}
 knitr::opts_chunk$set(cache=TRUE)
 ```
 
-# RNA-seq data import
+In this case study, we will examine a subset of the RNA-seq and
+ATAC-seq data from @alasoo -
+[doi: 10.1038/s41588-018-0046-7](https://doi.org/10.1038/s41588-018-0046-7). 
+The experiment involved treatment of macrophage cell lines from a number
+of human donors with IFN gamma, *Salmonella* infection, or both
+treatments combined. In the original study, the authors examined gene
+expression and chromatin accessibility in a subset of 86
+successfully differentiated iPSC lines, and examined baseline QTL and
+response QTL for both expression and accessibility. Here we will not
+examine the genotypes, but only the expression data and chromatin
+accessibility data, which is publicly available. First, let us review
+the main finding as presented in the abstract:
+
+> We observed that ~60% of stimulus-specific expression QTLs with a
+> detectable effect on chromatin altered the chromatin accessibility
+> in naive cells, thus suggesting that they perturb enhancer
+> priming. Such variants probably influence binding of
+> cell-type-specific transcription factors, such as PU.1, which can
+> then indirectly alter the binding of stimulus-specific transcription
+> factors, such as NF-κB or STAT2. Thus, although chromatin
+> accessibility assays are powerful for fine-mapping causal regulatory
+> variants, detecting their downstream effects on gene expression will
+> be challenging, requiring profiling of large numbers of stimulated
+> cellular states and time points.
+
+**Scientific aim of the case study**: here we will perform a much simpler
+analysis. We will examine the effect of IFNg stimulation on gene
+expression and chromatin accessibility, and look to see if there is an
+enrichment of differentially accessible (DA) ATAC-seq peaks in the
+vicinity of differentially expressed (DE) genes. This is plausible, as
+the transcriptomic response to IFNg stimulation may be mediated
+through binding of regulatory proteins to accessible regions, and this
+binding may increase the accessibility of those regions such that it
+can be detected by ATAC-seq.
+
+**Technical aim of the case study**: we will show how to use the
+Bioconductor package *plyranges* and *tximeta*. The first package can
+be used to perform easily-readable manipulations of data tied to genomic
+ranges, e.g. shifts, windows, overlaps, etc. The *plyranges* package
+is described by @Lee2019, and leverages underlying range operations
+described by @granges. The second package is
+used to read RNA-seq quantification into R/Bioconductor, such that the
+genomic ranges are automatically attached to the quantification data
+and differential expression results. 
+
+We begin by loading the RNA-seq data contained in the Bioconductor
+Experiment Data package, *macrophage*. The package contains RNA-seq
+quantification from 24 RNA-seq samples, a subset of the
+RNA-seq samples generated and analyzed by @alasoo. The paired-end
+reads were quantified using *Salmon* [@salmon], using the Gencode 29
+human reference transcripts [@gencode]. For more details on
+quantification, and the exact code used, consult the vignette of the
+[macrophage](http://bioconductor.org/packages/macrophage) package.
+The package also contains the `Snakemake` file that was used to
+distribute the *Salmon* quantification jobs on a cluster
+[@snakemake].
+
+# RNA-seq data import with *tximeta*
+
+First, we specify a directory `dir`, where the quantification files
+are stored. *You typically would not use* `system.file` *to specify
+this directory.* You could simply specify this directory with:
+
+```{r eval=FALSE}
+dir <- "/path/to/quant/files"
+```
+
+However, here we have distributed the files in an R package, so we
+locate that R package and the files using `system.file`.
+
+The rest of the chunk reads in the `coldata.csv` file, selects
+relevant columns from this table, and created `files` and
+`condition` columns which point to the quantification files and
+specify the condition (as a factor). One last detail is that the
+quantification files have been gzipped, so they have the `.gz`
+ending. Typically, these would look like `quant.sf` without the `.gz`
+ending. 
 
 ```{r}
 suppressPackageStartupMessages(library(plyranges))
@@ -29,21 +107,38 @@ coldata <- file.path(dir, "coldata.csv") %>%
 head(coldata)
 ```
 
+We next load the *SummarizedExperiment* and *tximeta* packages.
+
 ```{r}
 suppressPackageStartupMessages(library(SummarizedExperiment))
 library(tximeta)
 ```
+
+The following lines of code do a lot of work for the user: importing
+the RNA-seq quantification (dropping inferential replicates in this
+case), locating the relevant reference transcriptome, attaching
+the transcript ranges to the data, and fetching genome information. We
+can see what data has been imported using `assayNames`, which lists
+the assays of the *SummarizedExperiment*.
 
 ```{r}
 se <- tximeta(coldata, dropInfReps=TRUE)
 assayNames(se)
 ```
 
+Because `tximeta` knows the correct reference transcriptome, we can
+ask `tximeta` to summarize the transcript-level data to the gene level
+using the methods of @Soneson2015.
+
 ```{r}
 gse <- summarizeToGene(se)
 ```
 
-# Basic DE task
+# Basic RNA-seq DE analysis
+
+We can easily run a differential expression analysis with *DESeq2*
+using the following code chunks [@Love2014]. The design indicates that
+we want to control for the donor (`line`) and test on the condition.
 
 ```{r}
 library(DESeq2)
@@ -66,8 +161,11 @@ DESeq2::plotMA(res, ylim=c(-10,10))
 plotCounts(dds, which.min(res$pvalue), "condition")
 ```
 
-Output *GRanges* results (both DE and some non-DE for comparison
-later): 
+We now output *GRanges* results (both DE and some non-DE for
+comparison later). The `select` command pulls out particular columns
+from the *GRanges*, in some cases renaming them so they will be unique
+when we look at differential accessibility (which also will have LFC
+and adjusted p-values).
 
 ```{r}
 de_genes <- results(dds, 
@@ -82,7 +180,8 @@ de_genes <- results(dds,
 ```
 
 We re-run `results` because we don't want to use an `lfcThreshold` 
-this time:
+this time, to pull out genes which are not differentially expressed
+according to the *DESeq2* significance test.
 
 ```{r}
 other_genes <- results(dds, 
@@ -95,15 +194,27 @@ other_genes <- results(dds,
                     de_padj = padj)
 ```
 
-# ATAC peak data
+# ATAC-seq peak DA analysis
+
+The ATAC-seq data can be downloaded from the following deposition URL:
 
 <https://zenodo.org/record/1188300#.XIAhXlNKjOQ>
 
-This takes ~30 seconds and loads an object of ~370 Mb.
+The data is fairly large. For this workflow we need the files:
+
+* `ATAC_cqn_matrix.txt.gz` (109M)
+* `ATAC_sample_metadata.txt.gz` (<1M)
+* `ATAC_peak_metadata.txt.gz` (5.6M)
+
+The ATAC-seq data has already been normalized with *cqn* [@Hansen2012]
+and log2 transformed. Loading the *cqn*-normalized matrix of log2
+transformed read counts takes ~30 seconds and loads an object of ~370 Mb.
 
 ```{r}
 atac_mat <- as.matrix(read.delim("ATAC_cqn_matrix.txt.gz"))
 ```
+
+We also read in the sample metadata:
 
 ```{r}
 atac_coldata <- read.delim("ATAC_sample_metadata.txt.gz") %>% 
@@ -115,6 +226,9 @@ atac_coldata <- read.delim("ATAC_sample_metadata.txt.gz") %>%
   mutate(condition = relevel(condition, "naive"))
 ```
 
+Finally, we read in the peak metadata (locations in the genome), and
+convert to a *GRanges* object:
+
 ```{r}
 peaks_df <- read.delim("ATAC_peak_metadata.txt.gz", strings=FALSE)
 peaks_gr <- peaks_df %>% 
@@ -125,11 +239,17 @@ peaks_gr <- peaks_df %>%
 genome(peaks_gr) <- "GRCh38"
 ```
 
+Now we make sure that our ATAC-seq quantifications and our metadata
+are aligned:
+
 ```{r}
 idx <- match(colnames(atac_mat), atac_coldata$sample_id)
 atac_coldata <- atac_coldata[idx,]
 all.equal(colnames(atac_mat), as.character(atac_coldata$sample_id))
 ```
+
+We then combine the data, and two pieces of metadata into a
+*SummarizedExperiment*: 
 
 ```{r}
 atac <- SummarizedExperiment(list(cqndata=atac_mat),
@@ -137,7 +257,8 @@ atac <- SummarizedExperiment(list(cqndata=atac_mat),
                              colData=atac_coldata)
 ```
 
-Check the SD over mean plot:
+We can check the SD over mean plot, to assess for any systematic
+trends:
 
 ```{r}
 rmu <- rowMeans(assay(atac))
@@ -145,6 +266,8 @@ rvar <- rowVars(assay(atac))
 idx <- sample(nrow(atac),1e4)
 plot(rmu[idx], sqrt(rvar[idx]), cex=.1)
 ```
+
+For assessing differential accessibility, we run *limma* [@Smyth2004]: 
 
 ```{r}
 library(limma)
@@ -155,13 +278,17 @@ idx <- which(colnames(fit$coefficients) == "conditionIFNg")
 tt <- topTable(fit, coef=idx, sort.by="none", n=nrow(atac))
 ```
 
-Plot the top gene by LFC
+We can plot the top gene by LFC:
 
 ```{r}
 idx <- which.max(tt$logFC)
 plot(assay(atac)[idx,] ~ atac$condition)
 table(tt$logFC > 1 & tt$adj.P.Val < .05)
 ```
+
+We now take the `rowRanges` of the *SummarizedExperiment* and attach
+the LFC and adjusted p-value from *limma*, so that we can consider the
+overlap with differential expression.
 
 ```{r}
 peaks <- rowRanges(atac) %>% 
@@ -173,21 +300,38 @@ seqlevelsStyle(peaks) <- "UCSC"
 genome(peaks) <- "hg38"
 ```
 
+We filter to the set of peaks with a nominal FDR bound of 1%.
+
 ```{r}
 da_peaks <- peaks %>% filter(da_padj < .01)
 ```
 
-# Overlap analysis
+# Overlap analysis with *plyranges*
+
+Now that we have DE genes, genes without strong signal of DE, and DA
+peaks, we can perform our original aim to assess the enrichment of DA
+peaks near DE genes. We've already used *plyranges* a number of times
+above, to `filter`, `mutate` and `select` on *GRanges* objects, but
+now we will get into more complicated use cases.
+
+We define a function to sample `n` ranges from a *GRanges* object `x`.
 
 ```{r}
 # sub-sample, here define a dplyr function first
 sample_n <- function(x,n) x[sample.int(length(x),n,replace=FALSE)]
 ```
 
+We downsample the number of "other" genes to the number of DE genes: 
+
 ```{r}
 other_genes <- other_genes %>%
   sample_n(length(de_genes))
 ```
+
+We then bind these two sets of ranges together and add a new column
+`origin`. From `?bind_ranges`:
+
+> When `.id` is supplied a new column is created that links each row to the original Range object. 
 
 ```{r}
 lvls <- c("not_de","de")
@@ -195,10 +339,16 @@ all_genes <- bind_ranges(de=de_genes,
                          not_de=other_genes,
                          .id="origin") %>%
   mutate(
-    origin = factor(sub("de.*", "de", origin), lvls)
+    origin = factor(origin, lvls)
   )
 all_genes
 ``` 
+
+We expand 10kb around the TSS of the genes using `mutate` with
+`width=1e4`, and then perform a left join with the DA peaks. This
+gives us the `all_genes` ranges (potentially with duplication), but
+with the metadata columns from those overlapping DA peaks. For any
+gene that has no overlaps, the DA peak columns will have `NA`'s.
 
 ```{r}
 overlap_genes <- all_genes %>%
@@ -207,8 +357,12 @@ overlap_genes <- all_genes %>%
 overlap_genes
 ```
 
-How many DA peaks are near DE genes (where a gene may appear more than
-once, because we are doing a join):
+Now we can ask, how many DA peaks are near DE genes relative to
+"other" genes? Note that a gene may appear more than once, because we
+performed a left join. 
+
+We group by DE vs "other", and sum up the DA peaks at any LFC, or
+requiring an LFC of greater than 1, or greater than 2.
 
 ```{r}
 overlap_tab <- overlap_genes %>%
@@ -219,11 +373,14 @@ overlap_tab <- overlap_genes %>%
 overlap_tab
 ```
 
+We can see that the enrichment increases for larger LFC threshold:
+
 ```{r}
 sapply(overlap_tab[,-1], function(x) x[2]/x[1])
 ```
 
-We can ask for the top peak per gene based on the peak's LFC:
+We can ask for the top peak per gene based on the peak's LFC, and pipe
+that directly into a boxplot using *ggplot2*:
 
 ```{r}
 library(ggplot2)
@@ -234,3 +391,12 @@ overlap_genes %>%
   ggplot(aes(origin, abs(da_log2FC))) +
   geom_boxplot()
 ```
+
+# Further questions
+
+* We specified a fixed window for computing overlaps. How could we
+  have looked at various settings of this distance parameter?
+* We relied on the fact that the reference transcriptome was known to
+  `tximeta`. What if this had not been the case?
+
+# References

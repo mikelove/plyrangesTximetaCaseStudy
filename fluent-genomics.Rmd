@@ -394,8 +394,21 @@ overlap_genes %>%
 
 # Further questions
 
-* We specified a fixed window for computing overlaps. How could we
+* We specified a fixed-size window for computing overlaps. How could we
   have looked at various settings of this distance parameter?
+* We computed the sum of DA peaks near the DE genes, for increasing
+  LFC thresholds on the accessibility change. As we increased the
+  threshold, the number of total peaks went down (likewise the mean
+  number of DA peaks per gene). Likely the number of DE genes with a
+  DA peak nearby with such a large change went down, but we didn't
+  keep track of this. How could we have computed this? 
+* We have some duplicate code in the `summarize` call, where we change
+  only the LFC threshold. How could we perform this same operation
+  over, say, a grid of 100 thresholds, without having to write the
+  redundant code?
+* How would you adapt the code to also consider variations on the
+  thresholds applied to the DE genes (FDR 1%, testing against a null
+  region of |LFC| < 1), and to the FDR cutoff (1%) for the DA peaks?
 * We relied on the fact that the reference transcriptome was known to
   `tximeta`. What if this had not been the case?
 

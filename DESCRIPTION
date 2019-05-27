@@ -14,6 +14,15 @@ RoxygenNote: 6.1.1
 VignetteBuilder:
     knitr,
     rmarkdown
-Suggests: BiocStyle,
+Imports:
+    plyranges,
+    tximeta,
+    macrophage,
+    SummarizedExperiment,
+    DESeq2,
+    limma,
+    ggplot2
+Suggests:
+    BiocStyle,
     knitr,
     rmarkdown

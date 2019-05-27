@@ -77,7 +77,7 @@ The package also contains the `Snakemake` file that was used to
 distribute the *Salmon* quantification jobs on a cluster
 [@snakemake].
 
-# RNA-seq data import with *tximeta*
+## RNA-seq data import with *tximeta*
 
 First, we specify a directory `dir`, where the quantification files
 are stored. *You typically would not use* `system.file` *to specify
@@ -144,7 +144,7 @@ using the methods of @Soneson2015.
 gse <- summarizeToGene(se)
 ```
 
-# Basic RNA-seq DE analysis
+## Basic RNA-seq DE analysis
 
 We can easily run a differential expression analysis with *DESeq2*
 using the following code chunks [@Love2014]. The design indicates that
@@ -204,7 +204,7 @@ other_genes <- results(dds,
                     de_padj = padj)
 ```
 
-# ATAC-seq peak DA analysis
+## ATAC-seq peak DA analysis
 
 The ATAC-seq data can be downloaded from the following deposition URL:
 
@@ -316,7 +316,7 @@ We filter to the set of peaks with a nominal FDR bound of 1%.
 da_peaks <- peaks %>% filter(da_padj < .01)
 ```
 
-# Overlap analysis with *plyranges*
+## Overlap analysis with *plyranges*
 
 Now that we have DE genes, genes without strong signal of DE, and DA
 peaks, we can perform our original aim to assess the enrichment of DA
@@ -402,7 +402,7 @@ overlap_genes %>%
   geom_boxplot()
 ```
 
-# Further questions
+## Further questions
 
 * We specified a fixed-size window for computing overlaps. How could we
   have looked at various settings of this distance parameter?
@@ -422,4 +422,4 @@ overlap_genes %>%
 * We relied on the fact that the reference transcriptome was known to
   `tximeta`. What if this had not been the case?
 
-# References
+## References

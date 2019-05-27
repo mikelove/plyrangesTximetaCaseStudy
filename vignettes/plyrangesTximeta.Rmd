@@ -7,7 +7,7 @@ output:
     fig_width: 5
 bibliography: "`r file.path(system.file(package='plyrangesTximetaCaseStudy', 'vignettes'), 'library.bib')`"
 vignette: >
-  %\VignetteIndexEntry{dummychapter1}
+  %\VignetteIndexEntry{plyrangesTximetaCaseStudy}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding[utf8]{inputenc}
 ---

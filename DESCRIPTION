@@ -1,0 +1,19 @@
+Package: plyrangesTximetaCaseStudy
+Type: Package
+Title: plyranges and tximeta case study
+Version: 0.1.0
+Author: Michael Love
+Maintainer: Michael Love <michaelisaiahlove@gmail.com>
+Description: A case study in overlapping differential expression
+    and differential accessibility using plyranges and tximeta
+    package, designed as a workshop for BioC2019.
+License: MIT
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 6.1.1
+VignetteBuilder:
+    knitr,
+    rmarkdown
+Suggests: BiocStyle,
+    knitr,
+    rmarkdown

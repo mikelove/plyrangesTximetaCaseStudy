@@ -1,14 +1,24 @@
 ---
-title: "A *plyranges* and *tximeta* case study"
-subtitle: "Overlapping differential expression and differential chromatin accessibility"
-author: "Michael Love, Stuart Lee, Michael Lawrence"
-date: "June 2019"
-bibliography: library.bib
+output:
+  rmarkdown::html_document:
+    highlight: pygments
+    toc: true
+    toc_depth: 3
+    fig_width: 5
+bibliography: "`r file.path(system.file(package='plyrangesTximetaCaseStudy', 'vignettes'), 'library.bib')`"
+vignette: >
+  %\VignetteIndexEntry{dummychapter1}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding[utf8]{inputenc}
 ---
 
-```{r setup, echo=FALSE, results="hide"}
-knitr::opts_chunk$set(cache=TRUE)
-```
+# A plyranges and tximeta case study: Overlapping differential expression and differential chromatin accessibility
+
+## Instructor(s) name(s) and contact information
+
+[Michael Love](https://mikelove.github.io),
+[Stuart Lee](https://stuartlee.org/),
+[Michael Lawrence](https://twitter.com/lawremi)
 
 In this case study, we will examine a subset of the RNA-seq and
 ATAC-seq data from @alasoo -

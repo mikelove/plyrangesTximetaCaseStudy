@@ -20,6 +20,8 @@ vignette: >
 [Stuart Lee](https://stuartlee.org/),
 [Michael Lawrence](https://twitter.com/lawremi)
 
+## Introduction
+
 In this case study, we will examine a subset of the RNA-seq and
 ATAC-seq data from @alasoo -
 [doi: 10.1038/s41588-018-0046-7](https://doi.org/10.1038/s41588-018-0046-7). 
@@ -210,23 +212,28 @@ The ATAC-seq data can be downloaded from the following deposition URL:
 
 <https://zenodo.org/record/1188300#.XIAhXlNKjOQ>
 
-The data is fairly large. For this workflow we need the files:
+The data is fairly large. For running this section of workflow we need
+the files:
 
 * `ATAC_cqn_matrix.txt.gz` (109M)
 * `ATAC_sample_metadata.txt.gz` (<1M)
 * `ATAC_peak_metadata.txt.gz` (5.6M)
 
+Due to the large size of the matrix file, we cannot bundle the data
+with this workflow repository. We therefore set the following code
+chunks to be unevaluated, until the creation of the `peaks` object.
+
 The ATAC-seq data has already been normalized with *cqn* [@Hansen2012]
 and log2 transformed. Loading the *cqn*-normalized matrix of log2
 transformed read counts takes ~30 seconds and loads an object of ~370 Mb.
 
-```{r}
+```{r eval=FALSE}
 atac_mat <- as.matrix(read.delim("ATAC_cqn_matrix.txt.gz"))
 ```
 
 We also read in the sample metadata:
 
-```{r}
+```{r eval=FALSE}
 atac_coldata <- read.delim("ATAC_sample_metadata.txt.gz") %>% 
   plyranges::select(
     sample_id,
@@ -239,7 +246,7 @@ atac_coldata <- read.delim("ATAC_sample_metadata.txt.gz") %>%
 Finally, we read in the peak metadata (locations in the genome), and
 convert to a *GRanges* object:
 
-```{r}
+```{r eval=FALSE}
 peaks_df <- read.delim("ATAC_peak_metadata.txt.gz", strings=FALSE)
 peaks_gr <- peaks_df %>% 
   plyranges::select(seqnames = chr, start, end, peak_id=gene_id) %>% 
@@ -252,7 +259,7 @@ genome(peaks_gr) <- "GRCh38"
 Now we make sure that our ATAC-seq quantifications and our metadata
 are aligned:
 
-```{r}
+```{r eval=FALSE}
 idx <- match(colnames(atac_mat), atac_coldata$sample_id)
 atac_coldata <- atac_coldata[idx,]
 all.equal(colnames(atac_mat), as.character(atac_coldata$sample_id))
@@ -261,7 +268,7 @@ all.equal(colnames(atac_mat), as.character(atac_coldata$sample_id))
 We then combine the data, and two pieces of metadata into a
 *SummarizedExperiment*: 
 
-```{r}
+```{r eval=FALSE}
 atac <- SummarizedExperiment(list(cqndata=atac_mat),
                              rowRanges=peaks_gr,
                              colData=atac_coldata)
@@ -270,7 +277,7 @@ atac <- SummarizedExperiment(list(cqndata=atac_mat),
 We can check the SD over mean plot, to assess for any systematic
 trends:
 
-```{r}
+```{r eval=FALSE}
 rmu <- rowMeans(assay(atac))
 rvar <- rowVars(assay(atac))
 idx <- sample(nrow(atac),1e4)
@@ -279,7 +286,7 @@ plot(rmu[idx], sqrt(rvar[idx]), cex=.1)
 
 For assessing differential accessibility, we run *limma* [@Smyth2004]: 
 
-```{r}
+```{r eval=FALSE}
 library(limma)
 design <- model.matrix(~donor + condition, colData(atac))
 fit <- lmFit(assay(atac), design)
@@ -290,7 +297,7 @@ tt <- topTable(fit, coef=idx, sort.by="none", n=nrow(atac))
 
 We can plot the top gene by LFC:
 
-```{r}
+```{r eval=FALSE}
 idx <- which.max(tt$logFC)
 plot(assay(atac)[idx,] ~ atac$condition)
 table(tt$logFC > 1 & tt$adj.P.Val < .05)
@@ -300,7 +307,7 @@ We now take the `rowRanges` of the *SummarizedExperiment* and attach
 the LFC and adjusted p-value from *limma*, so that we can consider the
 overlap with differential expression.
 
-```{r}
+```{r eval=FALSE}
 peaks <- rowRanges(atac) %>% 
   mutate(
     da_log2FC = tt$logFC,
@@ -308,6 +315,16 @@ peaks <- rowRanges(atac) %>%
   )
 seqlevelsStyle(peaks) <- "UCSC"
 genome(peaks) <- "hg38"
+```
+
+Due to restrictions on the size of this workflow repository, we do not
+evaluate the above chunks, but instead now load the `peaks` object
+that was saved after following the code above.
+
+```{r}
+library(plyrangesTximetaCaseStudy)
+data(atac_peaks)
+peaks
 ```
 
 We filter to the set of peaks with a nominal FDR bound of 1%.

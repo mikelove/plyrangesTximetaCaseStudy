@@ -23,6 +23,5 @@ Imports:
     limma,
     ggplot2
 Suggests:
-    BiocStyle,
     knitr,
     rmarkdown

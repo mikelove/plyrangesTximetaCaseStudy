@@ -162,13 +162,13 @@ dds <- dds[keep,]
 ```{r}
 dds <- DESeq(dds)
 res <- results(dds, contrast=c("condition","IFNg","naive"),
-               lfcThreshold=1)
+               lfcThreshold=1, alpha=0.01)
 ```
 
 Always good to do a little visualization of results:
 
 ```{r}
-summary(res, alpha=.01)
+summary(res)
 DESeq2::plotMA(res, ylim=c(-10,10))
 plotCounts(dds, which.min(res$pvalue), "condition")
 ```

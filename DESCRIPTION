@@ -1,7 +1,7 @@
 Package: plyrangesTximetaCaseStudy
 Type: Package
 Title: plyranges and tximeta case study
-Version: 0.1.0
+Version: 0.1.1
 Author: Michael Love
 Maintainer: Michael Love <michaelisaiahlove@gmail.com>
 Description: A case study in overlapping differential expression

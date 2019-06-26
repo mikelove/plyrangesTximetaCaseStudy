@@ -372,13 +372,16 @@ all_genes
 ``` 
 
 We expand 10kb around the TSS of the genes using `mutate` with
-`width=1e4`, and then perform a left join with the DA peaks. This
+`width=1`, `anchor_center`, followed by `mutate` with
+`width=1e4`. Then we perform a left join with the DA peaks. This
 gives us the `all_genes` ranges (potentially with duplication), but
 with the metadata columns from those overlapping DA peaks. For any
 gene that has no overlaps, the DA peak columns will have `NA`'s.
 
 ```{r}
 overlap_genes <- all_genes %>%
+  mutate(width=1) %>%
+  anchor_center() %>%
   mutate(width=1e4) %>%
   join_overlap_left(da_peaks)
 overlap_genes

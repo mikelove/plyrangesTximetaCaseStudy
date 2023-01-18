@@ -114,7 +114,7 @@ coldata <- file.path(dir, "coldata.csv") %>%
   ) %>%
   mutate(
     files = file.path(dir, "quants", names, "quant.sf.gz"),
-    condition = relevel(condition, "naive")
+    condition = relevel(factor(condition), "naive")
   )
 head(coldata)
 ```
